@@ -1,19 +1,8 @@
 resource_registry:
   OS::TripleO::Controller::Net::SoftwareConfig: ../common/net-config-multinode.yaml
   OS::TripleO::Compute::Net::SoftwareConfig: ../common/net-config-multinode.yaml
-  OS::TripleO::Services::SaharaApi: ../../puppet/services/sahara-api.yaml
-  OS::TripleO::Services::SaharaEngine: ../../puppet/services/sahara-engine.yaml
-  OS::TripleO::Services::RabbitMQ: ../../puppet/services/pacemaker/rabbitmq.yaml
-  OS::TripleO::Services::HAproxy: ../../puppet/services/pacemaker/haproxy.yaml
-  OS::TripleO::Services::Pacemaker: ../../puppet/services/pacemaker.yaml
-  OS::TripleO::Services::MySQL: ../../puppet/services/pacemaker/database/mysql.yaml
-  OS::TripleO::Services::Keepalived: OS::Heat::None
-  OS::TripleO::Tasks::ControllerPrePuppet: ../../extraconfig/tasks/pre_puppet_pacemaker.yaml
-  OS::TripleO::Tasks::ControllerPostPuppet: ../../extraconfig/tasks/post_puppet_pacemaker.yaml
-  OS::TripleO::Tasks::ControllerPostPuppetRestart: ../../extraconfig/tasks/post_puppet_pacemaker_restart.yaml
-  # Some infra instances don't pass the ping test but are otherwise working.
-  # Since the OVB jobs also test this functionality we can shut it off here.
-  OS::TripleO::AllNodes::Validation: ../common/all-nodes-validation-disabled.yaml
+  OS::TripleO::Services::SaharaApi: /usr/share/openstack-tripleo-heat-templates/puppet/services/sahara-api.yaml
+  OS::TripleO::Services::SaharaEngine: /usr/share/openstack-tripleo-heat-templates/puppet/services/sahara-engine.yaml
 
 parameter_defaults:
   ControllerServices:
@@ -48,9 +37,6 @@ parameter_defaults:
     - OS::TripleO::Services::NovaLibvirt
     - OS::TripleO::Services::SaharaApi
     - OS::TripleO::Services::SaharaEngine
-    - OS::TripleO::Services::TripleoPackages
-    - OS::TripleO::Services::TripleoFirewall
-    - OS::TripleO::Services::Sshd
   ControllerExtraConfig:
     nova::compute::libvirt::services::libvirt_virt_type: qemu
     nova::compute::libvirt::libvirt_virt_type: qemu

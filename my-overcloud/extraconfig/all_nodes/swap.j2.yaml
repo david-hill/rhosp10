@@ -1,7 +1,11 @@
 heat_template_version: 2014-10-16
 
-description: Template file to add a swap file to a node.
+description: >
+  Extra config to add swap space to nodes.
 
+# Parameters passed from the parent template - note if you maintain
+# out-of-tree templates they may require additional parameters if the
+# in-tree templates add a new role.
 parameters:
   servers:
     type: json
@@ -14,7 +18,9 @@ parameters:
     description: Full path to location of swap file
     default: '/swap'
 
+
 resources:
+
   SwapConfig:
     type: OS::Heat::SoftwareConfig
     properties:

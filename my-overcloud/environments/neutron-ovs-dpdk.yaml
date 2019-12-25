@@ -9,7 +9,7 @@ parameter_defaults:
   #NeutronDpdkMemoryChannels: ""
 
   NeutronDatapathType: "netdev"
-  NeutronVhostuserSocketDir: "/var/lib/vhost_sockets"
+  NeutronVhostuserSocketDir: "/var/run/openvswitch"
 
   #NeutronDpdkSocketMemory: ""
   #NeutronDpdkDriverType: "vfio-pci"

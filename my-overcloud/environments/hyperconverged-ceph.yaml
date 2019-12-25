@@ -11,7 +11,6 @@ parameter_defaults:
     - OS::TripleO::Services::Timezone
     - OS::TripleO::Services::Ntp
     - OS::TripleO::Services::Snmp
-    - OS::TripleO::Services::Sshd
     - OS::TripleO::Services::NovaCompute
     - OS::TripleO::Services::NovaLibvirt
     - OS::TripleO::Services::Kernel

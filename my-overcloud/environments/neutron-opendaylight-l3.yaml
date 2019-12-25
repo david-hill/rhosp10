@@ -9,6 +9,6 @@ resource_registry:
 
 parameter_defaults:
   NeutronEnableForceMetadata: true
-  NeutronMechanismDrivers: 'opendaylight_v2'
-  NeutronServicePlugins: 'odl-router_v2'
+  NeutronMechanismDrivers: 'opendaylight'
+  NeutronServicePlugins: "networking_odl.l3.l3_odl.OpenDaylightL3RouterPlugin"
   OpenDaylightEnableL3: "'yes'"

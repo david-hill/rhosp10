@@ -25,5 +25,5 @@ parameter_defaults:
   CinderNetappControllerIps: ''
   CinderNetappSaPassword: ''
   CinderNetappStoragePools: ''
-  CinderNetappHostType: ''
+  CinderNetappEseriesHostType: 'linux_dm_mp'
   CinderNetappWebservicePath: '/devmgr/v2'

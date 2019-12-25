@@ -18,6 +18,5 @@ parameter_defaults:
   rhel_reg_server_url: ""
   rhel_reg_service_level: ""
   rhel_reg_user: "***REMOVED***"
-  rhel_reg_user: "***REMOVED***"
   rhel_reg_type: ""
   rhel_reg_method: "portal"

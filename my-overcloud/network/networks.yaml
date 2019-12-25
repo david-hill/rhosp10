@@ -21,6 +21,3 @@ resources:
 
   ManagementNetwork:
     type: OS::TripleO::Network::Management
-
-  NetworkExtraConfig:
-    type: OS::TripleO::Network::ExtraConfig

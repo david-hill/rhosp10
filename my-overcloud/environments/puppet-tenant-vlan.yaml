@@ -1,4 +1,4 @@
-parameter_defaults:
+parameters:
   NeutronNetworkType: vlan
-  NeutronTunnelTypes: ''
+  NeutronEnableTunnelling: false
   NeutronNetworkVLANRanges: datacentre:1:1000
