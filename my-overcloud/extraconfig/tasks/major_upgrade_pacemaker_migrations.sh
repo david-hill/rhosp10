@@ -13,6 +13,81 @@
 # been already applied, it should be possible to call the function
 # again without damaging the deployment or failing the upgrade.
 
+# This function will be called during a liberty->mitaka upgrade after init and
+# after the aodh upgrade. It assumes that a special puppet snippet configuring
+# keystone under wsgi has alread been run (i.e. /etc/httpd/conf.d/10*keystone*.conf
+# files are already set).
+function liberty_to_mitaka_keystone {
+    # If the "openstack-core-clone" resource already exists we do not need to make this transition
+    # as the function needs to be idempotent
+    if pcs resource show "openstack-core-clone"; then
+        return 0
+    fi
+    # Only run this on the bootstrap node
+    if [ "$(hiera -c /etc/puppet/hiera.yaml bootstrap_nodeid)" = "$(facter hostname)" ]; then
+        # LP #1599798
+        # We first create openstack-core and wait for it to be started, so that
+        # when we change the constraints the resource won't be stopped so no spurious restarts
+        # will take place
+        pcs resource create openstack-core ocf:heartbeat:Dummy --clone  interleave=true
+        check_resource openstack-core started 600
+
+        # We unmanage the httpd resource to make sure that pacemaker won't race
+        # with the keystone deletion/stopping during the CIB transaction that
+        # will take place later
+        pcs resource unmanage httpd-clone
+        CIB="/root/liberty-cib.xml"
+        CIB_BACKUP="/root/liberty-cib-orig.xml"
+        rm -f $CIB $CIB_BACKUP || /bin/true
+
+        pcs cluster cib $CIB
+        cp -f $CIB $CIB_BACKUP || /bin/true
+        PCS="pcs -f $CIB"
+
+        # change all constraints from keystone to dummy
+        CONSTR="$($PCS config | grep keystone | grep start | grep then)"
+        echo "$CONSTR" | {
+            while read i; do
+                ACT=$(echo "$i" | awk '{print $1}')
+                SRC=$(echo "$i" | awk '{print $2}')
+                DST=$(echo "$i" | awk '{print $5}')
+                CID=$(echo "$i" | awk '{print $7}' | sed -e 's/.*id\://g' -e 's/)//g')
+                if [ "$SRC" == "openstack-keystone-clone" ]; then
+                    $PCS constraint order $ACT openstack-core-clone then $DST
+                else
+                    $PCS constraint order $ACT $SRC then openstack-core-clone
+                fi
+                $PCS constraint remove $CID
+            done;
+        }
+        pcs cluster cib-push $CIB
+        # We make sure there are no outstanding transactions before removing
+        # and stopping keystone
+        timeout -k 10 600 crm_resource --wait
+        pcs resource delete openstack-keystone-clone
+
+        # Let's be 100% sure that the keystone resource is stopped and gone before
+        # we remanage the httpd resource later below. We cannot reuse check_resource
+        # as the resource might not exist already in which case the function would fail
+        tstart=$(date +%s)
+        while pcs status | grep -q keystone-clone; do
+            sleep 5
+            tnow=$(date +%s)
+            if (( tnow-tstart > 600)) ; then
+                echo_error "ERROR: keystone failed to stop during migration"
+                exit 1
+            fi
+        done
+        # make sure httpd (which provides keystone now) are started after dummy
+        pcs constraint order start openstack-core-clone then httpd-clone
+
+        # We re-manage the httpd resource now and make sure it is fully started
+        # so that a subsequent reload will not fail
+        pcs resource manage httpd-clone
+        check_resource httpd started 1800
+    fi
+}
+
 # If the major version of mysql is going to change after the major
 # upgrade, the database must be upgraded on disk to avoid failures
 # due to internal incompatibilities between major mysql versions
@@ -57,167 +132,85 @@ function is_mysql_upgrade_needed {
     echo "1"
 }
 
-# This function returns the list of services to be migrated away from pacemaker
-# and to systemd. The reason to have these services in a separate function is because
-# this list is needed in three different places: major_upgrade_controller_pacemaker_{1,2}
-# and in the function to migrate the cluster from full HA to HA NG
-function services_to_migrate {
-    # The following PCMK resources the ones the we are going to delete
-    PCMK_RESOURCE_TODELETE="
-    httpd-clone
-    memcached-clone
-    mongod-clone
-    neutron-dhcp-agent-clone
-    neutron-l3-agent-clone
-    neutron-metadata-agent-clone
-    neutron-netns-cleanup-clone
-    neutron-openvswitch-agent-clone
-    neutron-ovs-cleanup-clone
-    neutron-server-clone
-    openstack-aodh-evaluator-clone
-    openstack-aodh-listener-clone
-    openstack-aodh-notifier-clone
-    openstack-ceilometer-central-clone
-    openstack-ceilometer-collector-clone
-    openstack-ceilometer-notification-clone
-    openstack-cinder-api-clone
-    openstack-cinder-scheduler-clone
-    openstack-glance-api-clone
-    openstack-glance-registry-clone
-    openstack-gnocchi-metricd-clone
-    openstack-gnocchi-statsd-clone
-    openstack-heat-api-cfn-clone
-    openstack-heat-api-clone
-    openstack-heat-api-cloudwatch-clone
-    openstack-heat-engine-clone
-    openstack-nova-api-clone
-    openstack-nova-conductor-clone
-    openstack-nova-consoleauth-clone
-    openstack-nova-novncproxy-clone
-    openstack-nova-scheduler-clone
-    openstack-sahara-api-clone
-    openstack-sahara-engine-clone
-    "
-    echo $PCMK_RESOURCE_TODELETE
-}
+function add_missing_openstack_core_constraints {
+    # The CIBs are saved under /root as they might contain sensitive data
+    if [ "$(hiera -c /etc/puppet/hiera.yaml bootstrap_nodeid)" = "$(facter hostname)" ]; then
+        CIB="/root/migration.cib"
+        CIB_BACKUP="/root/backup.cib"
+        CIB_PUSH_NEEDED=n
 
-# Those are oneshot type services.
-function neutron_cleanup_services {
-    echo "
-    neutron-netns-cleanup-clone
-    neutron-ovs-cleanup-clone
-    "
-}
+        rm -f "$CIB" "$CIB_BACKUP" || /bin/true
+        pcs cluster cib "$CIB"
+        cp "$CIB" "$CIB_BACKUP"
 
-function deactivate_cleanup_services {
-    for service in $(neutron_cleanup_services); do
-        log_debug "Changing ocf configuration for '${service}'"
-        # We prevent any stop action by changing the exec to a noop.
-        local sysconfig_name=${service%-clone}
-        # This is loaded by /usr/lib/ocf/lib/neutron/neutron-{ovs,netns}-cleanup
-        echo "exec=/bin/echo" >> /etc/sysconfig/${sysconfig_name}
-    done
-    sed -i.orig -e 's/clean --force/clean/' /usr/lib/ocf/lib/neutron/neutron-netns-cleanup
-}
-
-function restore_cleanup_service_definition {
-    for service in $(neutron_cleanup_services); do
-        log_debug "Restoring original ocf configuration for '${service}'"
-        local sysconfig_file=/etc/sysconfig/${service%-clone}
-        if [ -e "${sysconfig_file}" ]; then
-            sed -e '/exec=\/bin\/echo/d' $sysconfig_file | \
-                sed -e '/^ *$/d' > /tmp/$service
-            if test -s /tmp/$service; then
-                cp /tmp/$service $sysconfig_file
-            else
-                rm -f $sysconfig_file
+        # sahara is not necessarily always present
+        if pcs -f "$CIB" resource | grep 'openstack-sahara-api-clone'; then
+            if ! pcs -f "$CIB" constraint --full | grep 'start openstack-sahara-api-clone then start openstack-sahara-engine-clone'; then
+                pcs -f "$CIB" constraint order start openstack-sahara-api-clone then start openstack-sahara-engine-clone
+                CIB_PUSH_NEEDED=y
             fi
-            [ ! -e /tmp/$service ] || rm -f /tmp/$service
-        fi
-    done
-    mv /usr/lib/ocf/lib/neutron/neutron-netns-cleanup{.orig,}
-}
-# This function will migrate a mitaka system where all the resources are managed
-# via pacemaker to a newton setup where only a few services will be managed by pacemaker
-# On a high-level it will operate as follows:
-# 1. Set the cluster in maintenance-mode so no start/stop action will actually take place
-#    during the conversion
-# 2. Remove all the colocation constraints and then the ordering constraints, except the
-#    ones related to haproxy/VIPs which exist in Newton as well
-# 3. Take the cluster out of maintenance-mode
-# 4. Remove all the resources that won't be managed by pacemaker in newton. The
-#    outcome will be
-#    that they are stopped and removed from pacemakers control
-# 5. Do a resource cleanup to make sure the cluster is in a clean state
-function migrate_full_to_ng_ha {
-    if [[ -n $(pcmk_running) ]]; then
-        pcs property set maintenance-mode=true
-
-        # pcs config output may require the --full option.
-        PCS_CONFIG="pcs config show"
-        if [ -z "$($PCS_CONFIG | sed -n '/^Colocation Constraints:$/,/^$/p' | grep -v 'Colocation Constraints:' | egrep -v 'ip-.*haproxy' | awk '{print $NF}' | grep colocation)" ]; then
-            PCS_CONFIG="pcs config show --full"
         fi
 
-        # First we go through all the colocation constraints (except the ones
-        # we want to keep, i.e. the haproxy/ip ones) and we remove those
-        COL_CONSTRAINTS=$($PCS_CONFIG | sed -n '/^Colocation Constraints:$/,/^$/p' | grep -v "Colocation Constraints:" | egrep -v "ip-.*haproxy" | awk '{print $NF}' | cut -f2 -d: |cut -f1 -d\))
-        for constraint in $COL_CONSTRAINTS; do
-            log_debug "Deleting colocation constraint $constraint from CIB"
-            pcs constraint remove "$constraint"
-        done
+        if ! pcs -f "$CIB" constraint --full | grep 'start openstack-core-clone then start openstack-ceilometer-notification-clone'; then
+            pcs -f "$CIB" constraint order start openstack-core-clone then start openstack-ceilometer-notification-clone
+            CIB_PUSH_NEEDED=y
+        fi
 
-        # Now we kill all the ordering constraints (except the haproxy/ip ones)
-        ORD_CONSTRAINTS=$($PCS_CONFIG | sed -n '/^Ordering Constraints:/,/^Colocation Constraints:$/p' | grep -v "Ordering Constraints:"  | awk '{print $NF}' | cut -f2 -d: |cut -f1 -d\))
-        for constraint in $ORD_CONSTRAINTS; do
-            log_debug "Deleting ordering constraint $constraint from CIB"
-            pcs constraint remove "$constraint"
-        done
-        # At this stage all the pacemaker resources are removed from the CIB.
-        # Once we remove the maintenance-mode those systemd resources will keep
-        # on running. They shall be systemd enabled via the puppet converge
-        # step later on
-        pcs property set maintenance-mode=false
+        if ! pcs -f "$CIB" constraint --full | grep 'start openstack-aodh-evaluator-clone then start openstack-aodh-listener-clone'; then
+            pcs -f "$CIB" constraint order start openstack-aodh-evaluator-clone then start openstack-aodh-listener-clone
+            CIB_PUSH_NEEDED=y
+        fi
 
-        # At this stage there are no constraints whatsoever except the haproxy/ip ones
-        # which we want to keep. We now disable and then delete each resource
-        # that will move to systemd.
-        # We want the systemd resources be stopped before doing "yum update",
-        # that way "systemctl try-restart <service>" is no-op because the
-        # service was down already
-        PCS_STATUS_OUTPUT="$(pcs status)"
-        for resource in $(services_to_migrate) "delay-clone" "openstack-core-clone"; do
-             if echo "$PCS_STATUS_OUTPUT" | grep "$resource"; then
-                 log_debug "Deleting $resource from the CIB"
-                 if ! pcs resource disable "$resource" --wait=600; then
-                     echo_error "ERROR: resource $resource failed to be disabled"
-                     exit 1
-                 fi
-                 pcs resource delete --force "$resource"
-             else
-                 log_debug "Service $resource not found as a pacemaker resource, not trying to delete."
-             fi
-        done
+        if pcs -f "$CIB" constraint --full | grep 'start openstack-core-clone then start openstack-heat-api-clone'; then
+            CID=$(pcs -f "$CIB" constraint --full | grep 'start openstack-core-clone then start openstack-heat-api-clone' | sed -e 's/.*id\://g' -e 's/)//g')
+            pcs -f "$CIB" constraint remove $CID
+            CIB_PUSH_NEEDED=y
+        fi
 
-        # We need to do a pcs resource cleanup here + crm_resource --wait to
-        # make sure the cluster is in a clean state before we stop everything,
-        # upgrade and restart everything
-        pcs resource cleanup
-        # We are making sure here that the cluster is stable before proceeding
-        if ! timeout -k 10 600 crm_resource --wait; then
-            echo_error "ERROR: cluster remained unstable after resource cleanup for more than 600 seconds, exiting."
-            exit 1
+        if [ "$CIB_PUSH_NEEDED" = 'y' ]; then
+            pcs cluster cib-push "$CIB"
         fi
     fi
 }
 
-function disable_standalone_ceilometer_api {
-    if [[ -n $(is_bootstrap_node) ]]; then
-        if [[ -n $(is_pacemaker_managed openstack-ceilometer-api) ]]; then
-            # Disable pacemaker resources for ceilometer-api
-            manage_pacemaker_service disable openstack-ceilometer-api
-            check_resource_pacemaker openstack-ceilometer-api stopped 600
-            pcs resource delete openstack-ceilometer-api --wait=600
+function remove_ceilometer_alarm {
+    if [ "$(hiera -c /etc/puppet/hiera.yaml bootstrap_nodeid)" = "$(facter hostname)" ]; then
+        if pcs status | grep openstack-ceilometer-alarm; then
+            # Disable pacemaker resources for ceilometer-alarms
+            pcs resource disable openstack-ceilometer-alarm-evaluator
+            check_resource openstack-ceilometer-alarm-evaluator stopped 600
+            pcs resource delete openstack-ceilometer-alarm-evaluator
+            pcs resource disable openstack-ceilometer-alarm-notifier
+            check_resource openstack-ceilometer-alarm-notifier stopped 600
+            pcs resource delete openstack-ceilometer-alarm-notifier
+        fi
+
+        # remove constraints
+        if  pcs constraint order show  | grep "start delay-clone then start openstack-ceilometer-alarm-evaluator-clone"; then
+            pcs constraint remove order-delay-clone-openstack-ceilometer-alarm-evaluator-clone-mandatory
+        fi
+
+        if  pcs constraint order show  | grep "start openstack-ceilometer-alarm-notifier-clone then start openstack-ceilometer-notification-clone"; then
+            pcs constraint remove order-openstack-ceilometer-alarm-notifier-clone-openstack-ceilometer-notification-clone-mandatory
+        fi
+
+        if  pcs constraint order show  | grep "start openstack-ceilometer-alarm-evaluator-clone then start openstack-ceilometer-alarm-notifier-clone"; then
+            pcs constraint remove order-openstack-ceilometer-alarm-evaluator-clone-openstack-ceilometer-alarm-notifier-clone-mandatory
+        fi
+
+        if  pcs constraint colocation show  | grep "openstack-ceilometer-notification-clone with openstack-ceilometer-alarm-notifier-clone"; then
+            pcs constraint remove colocation-openstack-ceilometer-notification-clone-openstack-ceilometer-alarm-notifier-clone-INFINITY
+        fi
+
+        if  pcs constraint colocation show  | grep "openstack-ceilometer-alarm-notifier-clone with openstack-ceilometer-alarm-evaluator-clone"; then
+            pcs constraint remove colocation-openstack-ceilometer-alarm-notifier-clone-openstack-ceilometer-alarm-evaluator-clone-INFINITY
+        fi
+
+        if  pcs constraint colocation show  | grep "openstack-ceilometer-alarm-evaluator-clone with delay-clone"; then
+            pcs constraint remove colocation-openstack-ceilometer-alarm-evaluator-clone-delay-clone-INFINITY
         fi
     fi
+
+    # uninstall openstack-ceilometer-alarm package
+    yum -y remove openstack-ceilometer-alarm
 }

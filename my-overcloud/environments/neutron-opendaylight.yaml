@@ -8,4 +8,4 @@ resource_registry:
 
 parameter_defaults:
   NeutronEnableForceMetadata: true
-  NeutronMechanismDrivers: 'opendaylight_v2'
+  NeutronMechanismDrivers: 'opendaylight'

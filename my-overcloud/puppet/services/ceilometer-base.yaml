@@ -36,12 +36,6 @@ parameters:
     type: string
     constraints:
     - allowed_values: ['gnocchi', 'database']
-  CeilometerEventDispatcher:
-    default: ['gnocchi', 'database']
-    description: Comma-separated list of Dispatchers to process events data
-    type: comma_delimited_list
-    constraints:
-    - allowed_values: ['gnocchi', 'database']
   CeilometerWorkers:
     default: 0
     description: Number of workers for Ceilometer service.
@@ -50,10 +44,6 @@ parameters:
     default: false
     description: Whether to store events in ceilometer.
     type: boolean
-  CeilometerEventsTTL:
-    default: -1
-    description: Number of seconds before database can expire the events data
-    type: number
   Debug:
     default: ''
     description: Set to True to enable debugging on all services.
@@ -97,11 +87,8 @@ outputs:
               - '@'
               - {get_param: [EndpointMap, MysqlInternal, host]}
               - '/ceilometer'
-              - '?bind_address='
-              - "%{hiera('tripleo::profile::base::database::mysql::client_bind_address')}"
         ceilometer_backend: {get_param: CeilometerBackend}
         ceilometer::metering_secret: {get_param: CeilometerMeteringSecret}
-        ceilometer::event_time_to_live: {get_param: CeilometerEventsTTL}
         # we include db_sync class in puppet-tripleo
         ceilometer::db::sync_db: false
         ceilometer::keystone::authtoken::project_name: 'service'
@@ -115,7 +102,6 @@ outputs:
         ceilometer::agent::auth::auth_tenant_name: 'service'
         ceilometer::agent::auth::auth_endpoint_type: 'internalURL'
         ceilometer::collector::meter_dispatcher: {get_param: CeilometerMeterDispatcher}
-        ceilometer::collector::event_dispatcher: {get_param: CeilometerEventDispatcher}
         ceilometer::dispatcher::gnocchi::url: {get_param: [EndpointMap, GnocchiInternal, uri]}
         ceilometer::dispatcher::gnocchi::filter_project: 'service'
         ceilometer::dispatcher::gnocchi::archive_policy: 'low'
@@ -128,7 +114,6 @@ outputs:
         ceilometer::db::database_db_max_retries: -1
         ceilometer::db::database_max_retries: -1
         ceilometer::telemetry_secret: {get_param: CeilometerMeteringSecret}
-        ceilometer::host: '"%{::fqdn}"'
       service_config_settings:
         keystone:
           ceilometer::keystone::auth::public_url: {get_param: [EndpointMap, CeilometerPublic, uri]}

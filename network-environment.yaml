@@ -5,9 +5,6 @@ resource_registry:
 #  OS::TripleO::ObjectStorage::Net::SoftwareConfig: /home/stack/rhosp10/my-overcloud/network/config/single-nic-vlans/swift-storage.yaml
   OS::TripleO::CephStorage::Net::SoftwareConfig: /home/stack/rhosp10/my-overcloud/network/config/single-nic-vlans/ceph-storage.yaml
   OS::TripleO::NodeUserData: /home/stack/rhosp10/my-overcloud/swap.yaml
-  OS::TripleO::Services::FluentdClient: /home/stack/rhosp10/my-overcloud/puppet/services/logging/fluentd-client.yaml
-  OS::TripleO::Services::SensuClient: /home/stack/rhosp10/my-overcloud/puppet/services/monitoring/sensu-client.yaml
-
 parameter_defaults:
   # Customize all these values to match the local environment
   InternalApiNetCidr: 172.17.0.0/24
@@ -37,57 +34,3 @@ parameter_defaults:
       "bond_mode=balance-tcp lacp=active other-config:lacp-fallback-ab=true"
   NovaComputeExtraConfig:
     nova::compute::reserved_host_memory: 512
-  LoggingServers:
-    - host: overcloud-controller-0
-      port: 24224
-    - host: overcloud-controller-0
-      port: 24224
-  MonitoringRabbitHost: overcloud-controller-0
-  MonitoringRabbitPort: 5672
-  MonitoringRabbitUserName: sensu
-  MonitoringRabbitPassword: sensu
-  MonitoringRabbitUseSSL: false
-  MonitoringRabbitVhost: "/sensu"
-  SensuClientCustomConfig:
-    api:
-      warning: 10
-      critical: 20
-  ExtraSysctlSettings:
-    net.nf_conntrack_max:
-      value: 800000
-    net.netfilter.nf_conntrack_max:
-      value: 800000
-  ControllerExtraConfig:
-    nova::api::osapi_compute_workers: 24
-    nova::api::metadata_workers: 24
-    nova::api::ec2_workers: 24
-    nova::api::conductor_workers: 24
-    nova::wsgi::apache::workers: 24
-    nova::conductor::workers: 24
-    cinder::api::service_workers: 24
-    glance::api::workers: 24
-    glance::registry::workers: 24
-    heat::engine::num_engine_workers: 24
-    heat::api::workers: 24
-    heat::api_cloudwatch::workers: 24
-    heat::api_cfn::workers: 24
-    keystone::admin_workers: 24
-    keystone::public_workers: 24
-    keystone::wsgi::apache::workers: 24
-    neutron::server::api_workers: 24
-    neutron::server::rpc_workers: 24
-    neutron::agents::metadata::metadata_workers: 24
-    swift::proxy::workers: 24
-    swift::storage::server::workers: 24
-  NeutronWorkers: 24
-  SwiftWorkers: 24 
-  ApacheMaxRequestWorkers: 24
-  KeystoneWorkers: 24
-  CeilometerWorkers: 24
-  NovaWorkers: 24
-  NeutronWorkers: 24
-  NovaWorkers: 24
-  GlanceWorkers: 24
-  GnocchiMetricdWorkers: 24
-  HeatWorkers: 24
-  SaharaWorkers: 24

@@ -201,16 +201,6 @@ resources:
       NetIpMap: {get_attr: [VipMap, net_ip_map]}
       ServiceNetMap: {get_attr: [ServiceNetMap, service_net_map]}
 
-  SshKnownHostsConfig:
-    type: OS::TripleO::Ssh::KnownHostsConfig
-    properties:
-      known_hosts:
-        list_join:
-          - ''
-          {% for role in roles %}
-          - {get_attr: [{{role.name}}, known_hosts_entry]}
-          {% endfor %}
-
   # Jinja loop for Role in roles_data.yaml
 {% for role in roles %}
   # Resources generated for {{role.name}} Role
@@ -230,19 +220,11 @@ resources:
       config: {get_attr: [hostsConfig, config_id]}
       servers: {get_attr: [{{role.name}}, attributes, nova_server_resource]}
 
-  {{role.name}}SshKnownHostsDeployment:
-    type: OS::Heat::StructuredDeployments
-    properties:
-      name: {{role.name}}SshKnownHostsDeployment
-      config: {get_resource: SshKnownHostsConfig}
-      servers: {get_attr: [{{role.name}}, attributes, nova_server_resource]}
-
   {{role.name}}AllNodesDeployment:
     type: OS::Heat::StructuredDeployments
     depends_on:
 {% for role_inner in roles %}
       - {{role_inner.name}}HostsDeployment
-      - {{role_inner.name}}SshKnownHostsDeployment
 {% endfor %}
     properties:
       name: {{role.name}}AllNodesDeployment
@@ -290,7 +272,7 @@ resources:
         # list of maps, but appends to colliding lists so we can
         # create a map of lists for all nodes for each network
         yaql:
-          expression: dict($.data.where($ != null).flatten().selectMany($.items()).groupBy($[0], $[1]).select([$[0], $[1].flatten()]))
+          expression: dict($.data.where($ != null).flatten().selectMany($.items()).groupBy($[0], $[1], [$[0], $[1].flatten()]))
           data:
             - {get_attr: [{{role.name}}, hostname_map]}
 
@@ -392,7 +374,7 @@ resources:
         # list of maps, but appends to colliding lists when a service
         # is deployed on more than one role
         yaql:
-          expression: dict($.data.l.where($ != null).selectMany($.items()).groupBy($[0], $[1]).select([$[0], $[1].flatten()]))
+          expression: dict($.data.l.where($ != null).selectMany($.items()).groupBy($[0], $[1], [$[0], $[1].flatten()]))
           data:
             l:
 {% for role in roles %}
@@ -400,7 +382,7 @@ resources:
 {% endfor %}
       service_node_names:
         yaql:
-          expression: dict($.data.l.where($ != null).selectMany($.items()).groupBy($[0], $[1]).select([$[0], $[1].flatten()]))
+          expression: dict($.data.l.where($ != null).selectMany($.items()).groupBy($[0], $[1], [$[0], $[1].flatten()]))
           data:
             l:
 {% for role in roles %}
@@ -408,7 +390,7 @@ resources:
 {% endfor %}
       short_service_node_names:
         yaql:
-          expression: dict($.data.l.where($ != null).selectMany($.items()).groupBy($[0], $[1]).select([$[0], $[1].flatten()]))
+          expression: dict($.data.l.where($ != null).selectMany($.items()).groupBy($[0], $[1], [$[0], $[1].flatten()]))
           data:
             l:
 {% for role in roles %}
@@ -521,24 +503,12 @@ resources:
       PingTestIps:
         list_join:
         - ' '
-        - - yaql:
-              expression: coalesce($.data, []).first(null)
-              data: {get_attr: [Controller, external_ip_address]}
-          - yaql:
-              expression: coalesce($.data, []).first(null)
-              data: {get_attr: [Controller, internal_api_ip_address]}
-          - yaql:
-              expression: coalesce($.data, []).first(null)
-              data: {get_attr: [Controller, storage_ip_address]}
-          - yaql:
-              expression: coalesce($.data, []).first(null)
-              data: {get_attr: [Controller, storage_mgmt_ip_address]}
-          - yaql:
-              expression: coalesce($.data, []).first(null)
-              data: {get_attr: [Controller, tenant_ip_address]}
-          - yaql:
-              expression: coalesce($.data, []).first(null)
-              data: {get_attr: [Controller, management_ip_address]}
+        - - {get_attr: [Controller, resource.0.external_ip_address]}
+          - {get_attr: [Controller, resource.0.internal_api_ip_address]}
+          - {get_attr: [Controller, resource.0.storage_ip_address]}
+          - {get_attr: [Controller, resource.0.storage_mgmt_ip_address]}
+          - {get_attr: [Controller, resource.0.tenant_ip_address]}
+          - {get_attr: [Controller, resource.0.management_ip_address]}
 
   UpdateWorkflow:
     type: OS::TripleO::Tasks::UpdateWorkflow
@@ -565,16 +535,14 @@ resources:
       - {{role.name}}AllNodesValidationDeployment
 {% endfor %}
     properties:
-      servers:
 {% for role in roles %}
-        {{role.name}}: {get_attr: [{{role.name}}, attributes, nova_server_resource]}
+      servers: {get_attr: [{{role.name}}, attributes, nova_server_resource]}
 {% endfor %}
 
   # Post deployment steps for all roles
   AllNodesDeploySteps:
     type: OS::TripleO::PostDeploySteps
     depends_on:
-      - AllNodesExtraConfig
 {% for role in roles %}
       - {{role.name}}AllNodesDeployment
 {% endfor %}

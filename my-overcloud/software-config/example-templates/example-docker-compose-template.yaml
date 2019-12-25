@@ -1,0 +1,135 @@
+heat_template_version: 2014-10-16
+parameters:
+  key_name:
+    type: string
+    default: heat_key
+  flavor:
+    type: string
+    default: m1.small
+  image:
+    type: string
+    default: fedora-software-config
+  private_net:
+    type: string
+    default: private
+  public_net:
+    type: string
+    default: public
+  env_file_0:
+     type: string
+  env_file_1:
+     type: string
+  env_file_2:
+     type: string
+  env_file_3:
+     type: string
+
+
+resources:
+  the_sg:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: the_sg
+      description: Ping and SSH
+      rules:
+      - protocol: icmp
+      - protocol: tcp
+        port_range_min: 22
+        port_range_max: 22
+      - protocol: tcp
+        port_range_min: 8000
+        port_range_max: 8000
+
+  config:
+    type: OS::Heat::StructuredConfig
+    properties:
+      group: docker-compose
+      inputs:
+      - name: env_files
+      config:
+        db:
+          image: redis
+          env_file:
+          - ./common.env
+          - ./apps/web.env
+        web:
+          image: nginx
+          env_file: ./test.env
+          links:
+          - db
+          ports:
+          - 80:8000
+
+  other_config:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: docker-compose
+      inputs:
+      - name: env_files
+      config:
+        get_file: config-scripts/example-docker-compose.yml
+
+  deployment:
+    type: OS::Heat::StructuredDeployment
+    properties:
+      name: test_deployment
+      config:
+        get_resource: config
+      server:
+        get_resource: server
+      input_values:
+        env_files:
+        - file_name: ./common.env
+          content: {get_param: env_file_0}
+        - file_name: ./apps/web.env
+          content: {get_param: env_file_1}
+        - file_name: ./test.env
+          content: {get_param: env_file_2}
+
+  other_deployment:
+    type: OS::Heat::SoftwareDeployment
+    properties:
+      name: other_deployment
+      config:
+        get_resource: other_config
+      server:
+        get_resource: server
+      input_values:
+        env_files:
+        - file_name: ./busybox.env
+          content: {get_param: env_file_3}
+
+  server:
+    type: OS::Nova::Server
+    properties:
+      image: {get_param: image}
+      flavor: {get_param: flavor}
+      key_name: {get_param: key_name}
+      security_groups:
+      - {get_resource: the_sg}
+      user_data_format: SOFTWARE_CONFIG
+
+  server_floating_ip_assoc:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: {get_resource: floating_ip}
+      port_id: {get_attr: [server, addresses, {get_param: private_net}, 0, port]}
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: {get_param: public_net}
+
+outputs:
+  status_code_deployment:
+    value:
+      get_attr: [deployment, deploy_status_code]
+  stdout:
+    value:
+      get_attr: [deployment, deploy_stdout]
+  stderr:
+    value:
+      get_attr: [deployment, deploy_stderr]
+  server_floating_ip:
+    value:
+      get_attr: [floating_ip, floating_ip_address]

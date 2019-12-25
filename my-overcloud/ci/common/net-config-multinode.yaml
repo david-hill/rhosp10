@@ -47,9 +47,7 @@ resources:
         str_replace:
           template: |
             #!/bin/bash
-            if ! ip addr show dev $bridge_name | grep CONTROLPLANEIP/CONTROLPLANESUBNETCIDR; then
-                ip addr add CONTROLPLANEIP/CONTROLPLANESUBNETCIDR dev $bridge_name
-            fi
+            ip addr add CONTROLPLANEIP/CONTROLPLANESUBNETCIDR dev $bridge_name
           params:
             CONTROLPLANEIP: {get_param: ControlPlaneIp}
             CONTROLPLANESUBNETCIDR: {get_param: ControlPlaneSubnetCidr}

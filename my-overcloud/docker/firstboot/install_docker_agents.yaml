@@ -6,7 +6,7 @@ parameters:
     default: heat-docker-agents
   DockerNamespace:
     type: string
-    default: tripleoupstream
+    default: kollaglue
   DockerNamespaceIsRegistry:
     type: boolean
     default: false
