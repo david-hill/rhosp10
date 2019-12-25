@@ -30,7 +30,9 @@ import yaml
 (IN_FILE, OUT_FILE) = ('endpoint_data.yaml', 'endpoint_map.yaml')
 
 SUBST = (SUBST_IP_ADDRESS, SUBST_CLOUDNAME) = ('IP_ADDRESS', 'CLOUDNAME')
-PARAMS = (PARAM_CLOUDNAME, PARAM_ENDPOINTMAP) = ('CloudName', 'EndpointMap')
+PARAMS = (PARAM_CLOUD_ENDPOINTS, PARAM_ENDPOINTMAP, PARAM_NETIPMAP,
+          PARAM_SERVICENETMAP) = (
+          'CloudEndpoints', 'EndpointMap', 'NetIpMap', 'ServiceNetMap')
 FIELDS = (F_PORT, F_PROTOCOL, F_HOST) = ('port', 'protocol', 'host')
 
 ENDPOINT_TYPES = frozenset(['Internal', 'Public', 'Admin'])
@@ -56,16 +58,8 @@ def load_endpoint_data(infile=None):
         return yaml.safe_load(f)
 
 
-def vip_param_name(endpoint_type_defn):
-    return endpoint_type_defn['vip_param'] + 'VirtualIP'
-
-
-def vip_param_names(config):
-    def ep_types(svc):
-        return (v for k, v in svc.items() if k in ENDPOINT_TYPES or not k)
-
-    return set(vip_param_name(defn)
-               for svc in config.values() for defn in ep_types(svc))
+def net_param_name(endpoint_type_defn):
+    return endpoint_type_defn['net_param'] + 'Network'
 
 
 def endpoint_map_default(config):
@@ -91,9 +85,9 @@ def make_parameter(ptype, default, description=None):
 
 
 def template_parameters(config):
-    params = collections.OrderedDict((n, make_parameter('string', ''))
-                                     for n in sorted(vip_param_names(config)))
-
+    params = collections.OrderedDict()
+    params[PARAM_NETIPMAP] = make_parameter('json', {}, 'The Net IP map')
+    params[PARAM_SERVICENETMAP] = make_parameter('json', {}, 'The Service Net map')
     params[PARAM_ENDPOINTMAP] = make_parameter('json',
                                                endpoint_map_default(config),
                                                'Mapping of service endpoint '
@@ -101,17 +95,18 @@ def template_parameters(config):
                                                'via parameter_defaults in the '
                                                'resource registry.')
 
-    params[PARAM_CLOUDNAME] = make_parameter('string',
-                                             'overcloud',
-                                             'The DNS name of this cloud. '
-                                             'e.g. ci-overcloud.tripleo.org')
+    params[PARAM_CLOUD_ENDPOINTS] = make_parameter(
+        'json',
+        {},
+        ('A map containing the DNS names for the different endpoints '
+         '(external, internal_api, etc.)'))
     return params
 
 
 def template_output_definition(endpoint_name,
                                endpoint_variant,
                                endpoint_type,
-                               vip_param,
+                               net_param,
                                uri_suffix=None,
                                name_override=None):
     def extract_field(field):
@@ -122,12 +117,36 @@ def template_output_definition(endpoint_name,
 
     port = extract_field(F_PORT)
     protocol = extract_field(F_PROTOCOL)
+    host_nobrackets = {
+        'str_replace': collections.OrderedDict([
+            ('template', extract_field(F_HOST)),
+            ('params', {
+                SUBST_IP_ADDRESS: {'get_param':
+                                   ['NetIpMap',
+                                    {'get_param': ['ServiceNetMap',
+                                     net_param]}]},
+                SUBST_CLOUDNAME: {'get_param':
+                                  [PARAM_CLOUD_ENDPOINTS,
+                                   {'get_param': ['ServiceNetMap',
+                                     net_param]}]},
+            })
+        ])
+    }
     host = {
         'str_replace': collections.OrderedDict([
             ('template', extract_field(F_HOST)),
             ('params', {
-                SUBST_IP_ADDRESS: {'get_param': vip_param},
-                SUBST_CLOUDNAME: {'get_param': PARAM_CLOUDNAME},
+                SUBST_IP_ADDRESS: {'get_param':
+                                   ['NetIpMap',
+                                    {'str_replace':
+                                    {'template': 'NETWORK_uri',
+                                     'params': {'NETWORK':
+                                     {'get_param': ['ServiceNetMap',
+                                                    net_param]}}}}]},
+                SUBST_CLOUDNAME: {'get_param':
+                                  [PARAM_CLOUD_ENDPOINTS,
+                                   {'get_param': ['ServiceNetMap',
+                                     net_param]}]},
             })
         ])
     }
@@ -140,6 +159,7 @@ def template_output_definition(endpoint_name,
                                                             endpoint_type)
 
     return name, {
+        'host_nobrackets': host_nobrackets,
         'host': host,
         'port': extract_field('port'),
         'protocol': extract_field('protocol'),
@@ -160,10 +180,9 @@ def template_endpoint_items(config):
                                             {'': None}).items():
                 name_override = defn.get('names', {}).get(variant)
                 yield template_output_definition(ep_name, variant, ep_type,
-                                                 vip_param_name(defn),
+                                                 net_param_name(defn),
                                                  suffix,
                                                  name_override)
-
     return itertools.chain.from_iterable(sorted(get_svc_endpoints(ep_name,
                                                                   svc))
                                          for (ep_name,

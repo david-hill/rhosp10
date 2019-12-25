@@ -1,4 +1,4 @@
-heat_template_version: 2014-10-16
+heat_template_version: 2016-10-14
 
 description: >
   RHEL Registration and unregistration software deployments.
@@ -45,8 +45,44 @@ parameters:
     type: string
   rhel_reg_sat_repo:
     type: string
+  rhel_reg_http_proxy_host:
+    type: string
+  rhel_reg_http_proxy_port:
+    type: string
+  rhel_reg_http_proxy_username:
+    type: string
+  rhel_reg_http_proxy_password:
+    type: string
+  UpdateOnRHELRegistration:
+    type: boolean
+    default: false
+    description: |
+      When enabled, the system will perform a yum update after performing the
+      RHEL Registration process.
+  DeleteOnRHELUnregistration:
+    type: boolean
+    default: false
+    description: |
+      When true, the system profile will be deleted from the registration
+      service when the rhel-registration.yaml nested stack is deleted.
+
+conditions:
+  unregister_on_delete:
+    equals:
+      - {get_param: DeleteOnRHELUnregistration}
+      - true
+  update_requested:
+    equals:
+      - {get_param: UpdateOnRHELRegistration}
+      - true
 
 resources:
+
+  DeploymentActions:
+    type: OS::Heat::Value
+    properties:
+      value:
+        yaql
 
   RHELRegistration:
     type: OS::Heat::SoftwareConfig
@@ -71,6 +107,10 @@ resources:
         - name: REG_TYPE
         - name: REG_METHOD
         - name: REG_SAT_REPO
+        - name: REG_HTTP_PROXY_HOST
+        - name: REG_HTTP_PROXY_PORT
+        - name: REG_HTTP_PROXY_USERNAME
+        - name: REG_HTTP_PROXY_PASSWORD
       config: {get_file: scripts/rhel-registration}
 
   RHELRegistrationDeployment:
@@ -99,6 +139,10 @@ resources:
         REG_TYPE: {get_param: rhel_reg_type}
         REG_METHOD: {get_param: rhel_reg_method}
         REG_SAT_REPO: {get_param: rhel_reg_sat_repo}
+        REG_HTTP_PROXY_HOST: {get_param: rhel_reg_http_proxy_host}
+        REG_HTTP_PROXY_PORT: {get_param: rhel_reg_http_proxy_port}
+        REG_HTTP_PROXY_USERNAME: {get_param: rhel_reg_http_proxy_username}
+        REG_HTTP_PROXY_PASSWORD: {get_param: rhel_reg_http_proxy_password}
 
   RHELUnregistration:
     type: OS::Heat::SoftwareConfig
@@ -114,9 +158,51 @@ resources:
       name: RHELUnregistrationDeployment
       server:  {get_param: server}
       config: {get_resource: RHELUnregistration}
-      actions: ['DELETE'] # Only do this on DELETE
+      actions:
+        if:
+          - unregister_on_delete
+          - ['DELETE']
+          - []
       input_values:
         REG_METHOD: {get_param: rhel_reg_method}
+
+  YumUpdateConfigurationAfterRHELRegistration:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: script
+      config: |
+        #!/bin/bash
+        set -x
+        # yum check-update exits 100 if updates are available
+        set +e
+        check_update=$(yum check-update 2>&1)
+        check_update_exit=$?
+        set -e
+        if [[ "$check_update_exit" == "100" ]]; then
+            full_command="yum -q -y update"
+            echo "Running: $full_command"
+            result=$($full_command)
+            return_code=$?
+            echo "$result"
+            echo "yum return code: $return_code"
+            exit $return_code
+        elif [[ "$check_update_exit" == "1" ]]; then
+            echo "Failed to check for package updates"
+            echo "$check_update"
+        else
+           echo "No packages require updating"
+           exit 0
+        fi
+
+  UpdateDeploymentAfterRHELRegistration:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: RHELRegistrationDeployment
+    condition: update_requested
+    properties:
+      name: UpdateDeploymentAfterRHELRegistration
+      config: {get_resource: YumUpdateConfigurationAfterRHELRegistration}
+      server:  {get_param: server}
+      actions: ['CREATE'] # Only do this on CREATE
 
 outputs:
   deploy_stdout:

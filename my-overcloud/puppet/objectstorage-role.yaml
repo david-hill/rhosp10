@@ -130,6 +130,8 @@ resources:
         type: multipart
       - config: {get_resource: NodeUserData}
         type: multipart
+      - config: {get_resource: RoleUserData}
+        type: multipart
 
   # Creates the "heat-admin" user if configured via the environment
   # Should return a OS::Heat::MultipartMime reference via OS::stack_id
@@ -141,43 +143,48 @@ resources:
   NodeUserData:
     type: OS::TripleO::NodeUserData
 
+  # For optional operator role-specific userdata
+  # Should return a OS::Heat::MultipartMime reference via OS::stack_id
+  RoleUserData:
+    type: OS::TripleO::ObjectStorage::NodeUserData
+
   ExternalPort:
-    type: OS::TripleO::SwiftStorage::Ports::ExternalPort
+    type: OS::TripleO::ObjectStorage::Ports::ExternalPort
     properties:
       ControlPlaneIP: {get_attr: [SwiftStorage, networks, ctlplane, 0]}
       IPPool: {get_param: SwiftStorageIPs}
       NodeIndex: {get_param: NodeIndex}
 
   InternalApiPort:
-    type: OS::TripleO::SwiftStorage::Ports::InternalApiPort
+    type: OS::TripleO::ObjectStorage::Ports::InternalApiPort
     properties:
       ControlPlaneIP: {get_attr: [SwiftStorage, networks, ctlplane, 0]}
       IPPool: {get_param: SwiftStorageIPs}
       NodeIndex: {get_param: NodeIndex}
 
   StoragePort:
-    type: OS::TripleO::SwiftStorage::Ports::StoragePort
+    type: OS::TripleO::ObjectStorage::Ports::StoragePort
     properties:
       ControlPlaneIP: {get_attr: [SwiftStorage, networks, ctlplane, 0]}
       IPPool: {get_param: SwiftStorageIPs}
       NodeIndex: {get_param: NodeIndex}
 
   StorageMgmtPort:
-    type: OS::TripleO::SwiftStorage::Ports::StorageMgmtPort
+    type: OS::TripleO::ObjectStorage::Ports::StorageMgmtPort
     properties:
       ControlPlaneIP: {get_attr: [SwiftStorage, networks, ctlplane, 0]}
       IPPool: {get_param: SwiftStorageIPs}
       NodeIndex: {get_param: NodeIndex}
 
   TenantPort:
-    type: OS::TripleO::SwiftStorage::Ports::TenantPort
+    type: OS::TripleO::ObjectStorage::Ports::TenantPort
     properties:
       ControlPlaneIP: {get_attr: [SwiftStorage, networks, ctlplane, 0]}
       IPPool: {get_param: SwiftStorageIPs}
       NodeIndex: {get_param: NodeIndex}
 
   ManagementPort:
-    type: OS::TripleO::SwiftStorage::Ports::ManagementPort
+    type: OS::TripleO::ObjectStorage::Ports::ManagementPort
     properties:
       ControlPlaneIP: {get_attr: [SwiftStorage, networks, ctlplane, 0]}
       IPPool: {get_param: SwiftStorageIPs}
@@ -293,12 +300,19 @@ resources:
 
   UpdateDeployment:
     type: OS::Heat::SoftwareDeployment
+    depends_on: NetworkDeployment
     properties:
       config: {get_resource: UpdateConfig}
       server: {get_resource: SwiftStorage}
       input_values:
         update_identifier:
           get_param: UpdateIdentifier
+
+  SshHostPubKey:
+    type: OS::TripleO::Ssh::HostPubKey
+    depends_on: SwiftStorageHieraDeploy
+    properties:
+        server: {get_resource: SwiftStorage}
 
 outputs:
   ip_address:
@@ -410,6 +424,65 @@ outputs:
             - '.'
             - - {get_attr: [SwiftStorage, name]}
               - ctlplane
+  known_hosts_entry:
+    description: Entry for ssh known hosts
+    value:
+      str_replace:
+        template: "PRIMARYIP,PRIMARYHOST.DOMAIN,PRIMARYHOST,\
+EXTERNALIP,EXTERNALHOST.DOMAIN,EXTERNALHOST,\
+INTERNAL_APIIP,INTERNAL_APIHOST.DOMAIN,INTERNAL_APIHOST,\
+STORAGEIP,STORAGEHOST.DOMAIN,STORAGEHOST,\
+STORAGE_MGMTIP,STORAGE_MGMTHOST.DOMAIN,STORAGE_MGMTHOST,\
+TENANTIP,TENANTHOST.DOMAIN,TENANTHOST,\
+MANAGEMENTIP,MANAGEMENTHOST.DOMAIN,MANAGEMENTHOST,\
+CTLPLANEIP,CTLPLANEHOST.DOMAIN,CTLPLANEHOST HOSTSSHPUBKEY"
+        params:
+          PRIMARYIP: {get_attr: [NetIpMap, net_ip_map, {get_param: [ServiceNetMap, ObjectStorageHostnameResolveNetwork]}]}
+          DOMAIN: {get_param: CloudDomain}
+          PRIMARYHOST: {get_attr: [SwiftStorage, name]}
+          EXTERNALIP: {get_attr: [ExternalPort, ip_address]}
+          EXTERNALHOST:
+            list_join:
+            - '.'
+            - - {get_attr: [SwiftStorage, name]}
+              - external
+          INTERNAL_APIIP: {get_attr: [InternalApiPort, ip_address]}
+          INTERNAL_APIHOST:
+            list_join:
+            - '.'
+            - - {get_attr: [SwiftStorage, name]}
+              - internalapi
+          STORAGEIP: {get_attr: [StoragePort, ip_address]}
+          STORAGEHOST:
+            list_join:
+            - '.'
+            - - {get_attr: [SwiftStorage, name]}
+              - storage
+          STORAGE_MGMTIP: {get_attr: [StorageMgmtPort, ip_address]}
+          STORAGE_MGMTHOST:
+            list_join:
+            - '.'
+            - - {get_attr: [SwiftStorage, name]}
+              - storagemgmt
+          TENANTIP: {get_attr: [TenantPort, ip_address]}
+          TENANTHOST:
+            list_join:
+            - '.'
+            - - {get_attr: [SwiftStorage, name]}
+              - tenant
+          MANAGEMENTIP: {get_attr: [ManagementPort, ip_address]}
+          MANAGEMENTHOST:
+            list_join:
+            - '.'
+            - - {get_attr: [SwiftStorage, name]}
+              - management
+          CTLPLANEIP: {get_attr: [SwiftStorage, networks, ctlplane, 0]}
+          CTLPLANEHOST:
+            list_join:
+            - '.'
+            - - {get_attr: [SwiftStorage, name]}
+              - ctlplane
+          HOSTSSHPUBKEY: {get_attr: [SshHostPubKey, ecdsa]}
   nova_server_resource:
     description: Heat resource handle for the swift storage server
     value:

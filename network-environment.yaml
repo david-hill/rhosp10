@@ -5,6 +5,9 @@ resource_registry:
 #  OS::TripleO::ObjectStorage::Net::SoftwareConfig: /home/stack/rhosp10/my-overcloud/network/config/single-nic-vlans/swift-storage.yaml
   OS::TripleO::CephStorage::Net::SoftwareConfig: /home/stack/rhosp10/my-overcloud/network/config/single-nic-vlans/ceph-storage.yaml
   OS::TripleO::NodeUserData: /home/stack/rhosp10/my-overcloud/swap.yaml
+  OS::TripleO::Services::FluentdClient: /home/stack/rhosp10/my-overcloud/puppet/services/logging/fluentd-client.yaml
+  OS::TripleO::Services::SensuClient: /home/stack/rhosp10/my-overcloud/puppet/services/monitoring/sensu-client.yaml
+
 parameter_defaults:
   # Customize all these values to match the local environment
   InternalApiNetCidr: 172.17.0.0/24
@@ -34,3 +37,23 @@ parameter_defaults:
       "bond_mode=balance-tcp lacp=active other-config:lacp-fallback-ab=true"
   NovaComputeExtraConfig:
     nova::compute::reserved_host_memory: 512
+  LoggingServers:
+    - host: overcloud-controller-0
+      port: 24224
+    - host: overcloud-controller-0
+      port: 24224
+  MonitoringRabbitHost: overcloud-controller-0
+  MonitoringRabbitPort: 5672
+  MonitoringRabbitUserName: sensu
+  MonitoringRabbitPassword: sensu
+  MonitoringRabbitUseSSL: false
+  MonitoringRabbitVhost: "/sensu"
+  SensuClientCustomConfig:
+    api:
+      warning: 10
+      critical: 20
+  ExtraSysctlSettings:
+    net.nf_conntrack_max:
+      value: 800000
+    net.netfilter.nf_conntrack_max:
+      value: 800000

@@ -4,15 +4,7 @@ description: Configure hieradata for all MidoNet nodes
 
 parameters:
   # Parameters passed from the parent template
-  controller_servers:
-    type: json
-  compute_servers:
-    type: json
-  blockstorage_servers:
-    type: json
-  objectstorage_servers:
-    type: json
-  cephstorage_servers:
+  servers:
     type: json
 
   EnableZookeeperOnController:
@@ -85,7 +77,7 @@ resources:
                 tripleo::cluster::cassandra::ssl_storage_port: {get_param: CassandraSslStoragePort}
                 tripleo::cluster::cassandra::client_port: {get_param: CassandraClientPort}
                 tripleo::cluster::cassandra::client_port_thrift: {get_param: CassandraClientPortThrift}
-                tripleo::loadbalancer::midonet_api: true
+                tripleo::haproxy::midonet_api: true
                 # Missed Neutron Puppet data
                 neutron::agents::dhcp::interface_driver: 'neutron.agent.linux.interface.MidonetInterfaceDriver'
                 neutron::agents::dhcp::dhcp_driver: 'midonet.neutron.agent.midonet_driver.DhcpNoOpDriver'
@@ -102,18 +94,10 @@ resources:
     type: OS::Heat::StructuredDeploymentGroup
     properties:
       config: {get_resource: NetworkMidoNetConfig}
-      servers: {get_param: controller_servers}
+      servers: {get_param: [servers, Controller]}
 
   NetworkMidonetDeploymentComputes:
     type: OS::Heat::StructuredDeploymentGroup
     properties:
       config: {get_resource: NetworkMidoNetConfig}
-      servers: {get_param: compute_servers}
-
-outputs:
-  config_identifier:
-    value:
-      list_join:
-        - ' '
-        - - {get_attr: [NetworkMidonetDeploymentControllers, deploy_stdouts]}
-          - {get_attr: [NetworkMidonetDeploymentComputes, deploy_stdouts]}
+      servers: {get_param: [servers, Compute]}

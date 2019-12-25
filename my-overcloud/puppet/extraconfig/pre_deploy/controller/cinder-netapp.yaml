@@ -70,12 +70,28 @@ parameters:
   CinderNetappStoragePools:
     type: string
     default: ''
-  CinderNetappEseriesHostType:
+  CinderNetappHostType:
     type: string
-    default: 'linux_dm_mp'
+    default: ''
   CinderNetappWebservicePath:
     type: string
     default: '/devmgr/v2'
+  CinderNetappNasSecureFileOperations:
+    type: string
+    default: 'false'
+  CinderNetappNasSecureFilePermissions:
+    type: string
+    default: 'false'
+  # DEPRECATED options for compatibility with older versions
+  CinderNetappEseriesHostType:
+    type: string
+    default: 'linux_dm_mp'
+
+parameter_groups:
+- label: deprecated
+  description: Do not use deprecated params, they will be removed.
+  parameters:
+  - CinderNetappEseriesHostType
 
 resources:
   CinderNetappConfig:
@@ -87,7 +103,7 @@ resources:
           datafiles:
             cinder_netapp_data:
               mapped_data:
-                cinder_enable_netapp_backend: {get_input: EnableNetappBackend}
+                tripleo::profile::base::cinder::volume::cinder_enable_netapp_backend: {get_input: EnableNetappBackend}
                 cinder::backend::netapp::title: {get_input: NetappBackendName}
                 cinder::backend::netapp::netapp_login: {get_input: NetappLogin}
                 cinder::backend::netapp::netapp_password: {get_input: NetappPassword}
@@ -108,8 +124,10 @@ resources:
                 cinder::backend::netapp::netapp_controller_ips: {get_input: NetappControllerIps}
                 cinder::backend::netapp::netapp_sa_password: {get_input: NetappSaPassword}
                 cinder::backend::netapp::netapp_storage_pools: {get_input: NetappStoragePools}
-                cinder::backend::netapp::netapp_eseries_host_type: {get_input: NetappEseriesHostType}
+                cinder::backend::netapp::netapp_host_type: {get_input: NetappHostType}
                 cinder::backend::netapp::netapp_webservice_path: {get_input: NetappWebservicePath}
+                cinder::backend::netapp::nas_secure_file_operations: {get_input: NetappNasSecureFileOperations}
+                cinder::backend::netapp::nas_secure_file_permissions: {get_input: NetappNasSecureFilePermissions}
 
   CinderNetappDeployment:
     type: OS::Heat::StructuredDeployment
@@ -139,8 +157,10 @@ resources:
         NetappControllerIps: {get_param: CinderNetappControllerIps}
         NetappSaPassword: {get_param: CinderNetappSaPassword}
         NetappStoragePools: {get_param: CinderNetappStoragePools}
-        NetappEseriesHostType: {get_param: CinderNetappEseriesHostType}
+        NetappHostType: {get_param: CinderNetappHostType}
         NetappWebservicePath: {get_param: CinderNetappWebservicePath}
+        NetappNasSecureFileOperations: {get_param: CinderNetappNasSecureFileOperations}
+        NetappNasSecureFilePermissions: {get_param: CinderNetappNasSecureFilePermissions}
 
 outputs:
   deploy_stdout:
