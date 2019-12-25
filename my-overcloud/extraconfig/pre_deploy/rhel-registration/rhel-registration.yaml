@@ -1,4 +1,4 @@
-heat_template_version: 2016-10-14
+heat_template_version: 2014-10-16
 
 description: >
   RHEL Registration and unregistration software deployments.
@@ -59,12 +59,6 @@ parameters:
     description: |
       When enabled, the system will perform a yum update after performing the
       RHEL Registration process.
-
-conditions:
-  update_requested:
-    equals:
-      - {get_param: UpdateOnRHELRegistration}
-      - true
 
 resources:
 
@@ -177,7 +171,8 @@ resources:
   UpdateDeploymentAfterRHELRegistration:
     type: OS::Heat::SoftwareDeployment
     depends_on: RHELRegistrationDeployment
-    condition: update_requested
+    conditions:
+      update_requested: {get_param: UpdateOnRHELRegistration}
     properties:
       name: UpdateDeploymentAfterRHELRegistration
       config: {get_resource: YumUpdateConfigurationAfterRHELRegistration}

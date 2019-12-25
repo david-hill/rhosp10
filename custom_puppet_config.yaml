@@ -1,0 +1,24 @@
+heat_template_version: 2014-10-16
+
+description: >
+  Run Puppet extra configuration to mount a shared /var/lib/nova/instances
+
+parameters:
+  servers:
+    type: json
+
+resources:
+  ExtraPuppetConfig:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      config: {get_file: mount.pp}
+      group: puppet
+      options:
+        enable_hiera: True
+        enable_facter: False
+
+  ExtraPuppetDeployments:
+    type: OS::Heat::SoftwareDeploymentGroup
+    properties:
+      config: {get_resource: ExtraPuppetConfig}
+      servers: {get_param: servers}
