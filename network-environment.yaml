@@ -34,6 +34,3 @@ parameter_defaults:
       "bond_mode=balance-tcp lacp=active other-config:lacp-fallback-ab=true"
   NovaComputeExtraConfig:
     nova::compute::reserved_host_memory: 512
-#  ControllerExtraConfig:
-#    cinder::rpc_response_timeout: 120
-#    tripleo::haproxy::haproxy_default_timeout: ['http-request 10s','queue 1m','client 4m','server 4m','check 10s']
