@@ -320,134 +320,30 @@ function systemctl_swift {
     done
 }
 
-# Special case for OVS 2.9 where we need to change the OVS config file
-# to run with the right user
-function change_ovs_2_9_user {
-    local ovs_config_file="/etc/sysconfig/openvswitch"
-
-    if ! grep -q '^OVS_USER_ID="*openvswitch:hugetlbfs"*' $ovs_config_file; then
-        if grep -q "^\#*OVS_USER_ID=" $ovs_config_file; then
-            sed -i 's/^\#*OVS_USER_ID=.*/OVS_USER_ID="openvswitch:hugetlbfs"/' $ovs_config_file
-        else
-            sed -i '$ a OVS_USER_ID="openvswitch:hugetlbfs"' $ovs_config_file
-        fi
-    fi
-}
-
-# Special case for OVS 2.9 where we need to create a one-time service file,
-# that will change any remaining permissions after reboot if needed
-function change_ovs_2_9_perms {
-    local ovs_owner=$(find /etc/openvswitch /var/log/openvswitch ! -user openvswitch ! -group hugetlbfs 2> /dev/null)
-    if [ ! -z "${ovs_owner}" ]; then
-            cat >/etc/systemd/system/multi-user.target.wants/fix-ovs-permissions.service <<EOL
-[Unit]
-Description=One time service to fix permissions in OpenvSwitch
-Before=openvswitch.service
-
-[Service]
-Type=oneshot
-User=root
-ExecStart=/usr/bin/bash -c "/usr/bin/chown -R openvswitch:hugetlbfs /etc/openvswitch /var/log/openvswitch || true"
-ExecStartPost=/usr/bin/rm /etc/systemd/system/multi-user.target.wants/fix-ovs-permissions.service
-TimeoutStartSec=0
-RemainAfterExit=no
-
-[Install]
-WantedBy=default.target
-EOL
-        chmod a+x /etc/systemd/system/multi-user.target.wants/fix-ovs-permissions.service
-    fi
-}
-
-function change_ovs_runtime_mode {
-    ovs_src_service_path="/usr/lib/systemd/system/ovs-vswitchd.service"
-    ovs_service_path="${ovs_src_service_path/usr\/lib/etc}"
-    ovs_db_src_service_path=/usr/lib/systemd/system/ovsdb-server.service
-    ovs_db_service_path="${ovs_db_src_service_path/usr\/lib/etc}"
-    ovs_src_ctl_path="/usr/share/openvswitch/scripts/ovs-ctl"
-    ovs_ctl_path="/usr/local/bin/ovs-ctl"
-    ovs_src_lib_path="/usr/share/openvswitch/scripts/ovs-lib"
-    ovs_lib_path="/usr/local/bin/ovs-lib"
-
-    ln -sf $ovs_src_lib_path $ovs_lib_path
-    command cp -f $ovs_src_ctl_path $ovs_ctl_path
-
-    if ! grep -q "umask 0002 \&\& start_daemon \"\$OVS_VSWITCHD_PRIORITY\"" $ovs_ctl_path; then
-        sed -i 's/start_daemon \"\$OVS_VSWITCHD_PRIORITY\"\(.*\)/umask 0002 \&\& start_daemon \"$OVS_VSWITCHD_PRIORITY\"\1/' $ovs_ctl_path
-    fi
-    sed 's#'$ovs_src_ctl_path'#'$ovs_ctl_path'#' $ovs_db_src_service_path > $ovs_db_service_path
-    sed 's#'$ovs_src_ctl_path'#'$ovs_ctl_path'#' $ovs_src_service_path > $ovs_service_path
-
-    if grep -q "RuntimeDirectoryMode=.*" $ovs_src_service_path; then
-        sed -i 's/RuntimeDirectoryMode=.*/RuntimeDirectoryMode=0775/' $ovs_src_service_path > $ovs_service_path
-    else
-        echo "RuntimeDirectoryMode=0775" >> $ovs_service_path
-    fi
-    if ! grep -Fxq "UMask=0002" $ovs_src_service_path; then
-        echo "UMask=0002" >> $ovs_service_path
-    fi
-}
-
 # Special-case OVS for https://bugs.launchpad.net/tripleo/+bug/1635205
 # Update condition and add --notriggerun for +bug/1669714
 function special_case_ovs_upgrade_if_needed {
     # Always ensure yum has full cache
     yum makecache || echo "Yum makecache failed. This can cause failure later on."
-    # Ovs uses openvswitch:hugetlbfs as user and group settings
-    # when updating to 2.8 onwards, but openvswitch user is not
-    # created during package update. This adds workaround to
-    # make sure openvswitch user exist before running package
-    # update. Details can be found at:
-    # https://bugzilla.redhat.com/show_bug.cgi?id=1559374
-    # 42477 is the kolla hugetlbfs gid value.
-    getent group hugetlbfs >/dev/null || \
-        groupadd hugetlbfs -g 42477 && groupmod -g 42477 hugetlbfs
-    getent passwd openvswitch >/dev/null || \
-        useradd -r -d / -s /sbin/nologin -c "Open vSwitch Daemons" openvswitch
-    usermod -a -G hugetlbfs openvswitch
-
-    # first check if ovs needs upgrade
-    OVS_NEEDS_UPGRADE=$(yum check-upgrade openvswitch | awk '/openvswitch/{print}')
-    if [ -z "${OVS_NEEDS_UPGRADE}" ]; then
-        echo "Looks like newer version of openvswitch is already installed, skipping"
-    else
-        if rpm -qa | grep "^openvswitch-2.5.0-14" || rpm -q --scripts openvswitch | awk '/postuninstall/,/*/' | grep "systemctl.*try-restart" ; then
-            echo "Manual upgrade of openvswitch - ovs-2.5.0-14 or restart in postun detected"
-            rm -rf OVS_UPGRADE
-            mkdir OVS_UPGRADE && pushd OVS_UPGRADE
-            echo "Attempting to downloading latest openvswitch with yumdownloader"
-            yumdownloader --resolve openvswitch
-            # Upgrade all dependencies.
-            ls -1 *.rpm | grep -v '^openvswitch-[0-9]'  && ls -1 *.rpm | grep -v '^openvswitch-[0-9]' | xargs rpm -U
-            # Upgrade leftover which should always be only
-            # openvswitch, but let's be extra cautious.
-            for pkg in $(ls -1 openvswitch-[0-9]*.rpm);  do
+    if rpm -qa | grep "^openvswitch-2.5.0-14" || rpm -q --scripts openvswitch | awk '/postuninstall/,/*/' | grep "systemctl.*try-restart" ; then
+        echo "Manual upgrade of openvswitch - ovs-2.5.0-14 or restart in postun detected"
+        rm -rf OVS_UPGRADE
+        mkdir OVS_UPGRADE && pushd OVS_UPGRADE
+        echo "Attempting to downloading latest openvswitch with yumdownloader"
+        yumdownloader --resolve openvswitch
+        for pkg in $(ls -1 *.rpm);  do
+            if rpm -U --test $pkg 2>&1 | grep "already installed" ; then
+                echo "Looks like newer version of $pkg is already installed, skipping"
+            else
                 echo "Updating $pkg with --nopostun --notriggerun"
                 rpm -U --replacepkgs --nopostun --notriggerun $pkg
-            done
-            popd
-
-        else
-            echo "Skipping manual upgrade of openvswitch - no restart in postun detected. Performing automated upgrade"
-            yum update -y openvswitch
-        fi
-
-        local ovs_version=$(rpm -q --queryformat '%{VERSION}' openvswitch)
-        local major_version=`echo $ovs_version | cut -d. -f1`
-        local minor_version=`echo $ovs_version | cut -d. -f2`
-        local version_to_number=$(($major_version*10+$minor_version))
-        if (( $version_to_number >= 28 )); then
-            change_ovs_2_9_user
-            change_ovs_2_9_perms
-            # ensure that from this minor update onwards, we need the workarounds
-            touch /etc/systemd/system/apply-ovs-runtime-mode-workaround
-        fi
-        # If the apply-*-workaround file is present, ensure it is updated to the
-        # latest from the package with permissions modified.
-        if [ -f "/etc/systemd/system/apply-ovs-runtime-mode-workaround" ]; then
-            change_ovs_runtime_mode
-        fi
+            fi
+        done
+        popd
+    else
+        echo "Skipping manual upgrade of openvswitch - no restart in postun detected"
     fi
+
 }
 
 function special_case_iptables_services_upgrade_if_needed {
@@ -542,9 +438,6 @@ function yum_pre_update {
     # No need to proceed if the ceph-osd package isn't installed
     if ! rpm -q ceph-osd >/dev/null 2>&1; then
         echo "ceph-osd package is not installed"
-        # Downstream only: ensure the Ceph OSD product key is removed if the
-        # ceph-osd package was previously removed.
-        rm -f /etc/pki/product/288.pem
         return
     fi
 
@@ -588,8 +481,4 @@ function yum_pre_update {
     echo "ceph-osd package is not required, but is preventing updates to other ceph packages"
     echo "Removing ceph-osd package to allow updates to other ceph packages"
     yum -y remove ceph-osd
-    if [ $? -eq 0 ]; then
-        # Downstream only: remove the Ceph OSD product key (rhbz#1500594)
-        rm -f /etc/pki/product/288.pem
-    fi
 }

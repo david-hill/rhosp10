@@ -87,11 +87,6 @@ parameters:
     description: >
         Cron to move deleted instances to another table - Log destination
     default: '/var/log/cinder/cinder-rowsflush.log'
-  NovaPassword:
-    type: string
-    description: The password for the nova service and db account
-    hidden: true
-
 
 outputs:
   role_data:
@@ -127,9 +122,3 @@ outputs:
         cinder::cron::db_purge::user: {get_param: CinderCronDbPurgeUser}
         cinder::cron::db_purge::age: {get_param: CinderCronDbPurgeAge}
         cinder::cron::db_purge::destination: {get_param: CinderCronDbPurgeDestination}
-        cinder::os_privileged::os_privileged_user_name: 'nova'
-        cinder::os_privileged::os_privileged_user_password: {get_param: NovaPassword}
-        cinder::os_privileged::os_privileged_user_tenant: 'service'
-        cinder::os_privileged::os_privileged_user_auth_url: {get_param: [EndpointMap, KeystoneInternal, uri_no_suffix]}
-        cinder::os_privileged::nova_catalog_info: 'compute:nova:internalURL'
-        cinder::os_privileged::nova_catalog_admin_info: 'compute:nova:adminURL'

@@ -82,20 +82,6 @@ parameters:
       Expects a dictionary with keys 'public_key' and 'private_key'.
       Values should be identical to SSH public/private key files.
     default: {}
-  NovaLibvirtRxQueueSize:
-    description: >
-      virtio-net RX queue size. Valid values are 256, 512, 1024
-    default: 512
-    type: number
-    constraints:
-      - allowed_values: [ 256, 512, 1024 ]
-  NovaLibvirtTxQueueSize:
-    description: >
-      virtio-net TX queue size. Valid values are 256, 512, 1024
-    default: 512
-    type: number
-    constraints:
-      - allowed_values: [ 256, 512, 1024 ]
 
 resources:
   NovaBase:
@@ -125,8 +111,6 @@ outputs:
                   JSON_PARAM: {get_param: NovaPCIPassthrough}
             nova::compute::vcpu_pin_set: {get_param: NovaVcpuPinSet}
             nova::compute::reserved_host_memory: {get_param: NovaReservedHostMemory}
-            nova::compute::libvirt::rx_queue_size: {get_param: NovaLibvirtRxQueueSize}
-            nova::compute::libvirt::tx_queue_size: {get_param: NovaLibvirtTxQueueSize}
             # we manage migration in nova common puppet profile
             nova::compute::libvirt::migration_support: false
             tripleo::profile::base::nova::manage_migration: true
