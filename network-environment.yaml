@@ -4,8 +4,25 @@ resource_registry:
   OS::TripleO::Controller::Net::SoftwareConfig: /home/stack/rhosp10/my-overcloud/network/config/single-nic-vlans/controller.yaml
 #  OS::TripleO::ObjectStorage::Net::SoftwareConfig: /home/stack/rhosp10/my-overcloud/network/config/single-nic-vlans/swift-storage.yaml
   OS::TripleO::CephStorage::Net::SoftwareConfig: /home/stack/rhosp10/my-overcloud/network/config/single-nic-vlans/ceph-storage.yaml
-  OS::TripleO::NodeUserData: /home/stack/rhosp10/my-overcloud/first-boot.yaml
-  OS::TripleO::NodeExtraConfigPost: /home/stack/rhosp10/custom_puppet_config.yaml
+  OS::TripleO::NodeUserData: /home/stack/rhosp10/my-overcloud/swap.yaml
+  OS::TripleO::Services::FluentdClient: /home/stack/rhosp10/my-overcloud/puppet/services/logging/fluentd-client.yaml
+  OS::TripleO::Services::SensuClient: /home/stack/rhosp10/my-overcloud/puppet/services/monitoring/sensu-client.yaml
+
+  OS::TripleO::Services::MongoDb: OS::Heat::None
+  OS::TripleO::Services::CeilometerApi: OS::Heat::None
+  OS::TripleO::Services::CeilometerCollector: OS::Heat::None
+  OS::TripleO::Services::CeilometerExpirer: OS::Heat::None
+  OS::TripleO::Services::CeilometerAgentCentral: OS::Heat::None
+  OS::TripleO::Services::CeilometerAgentNotification: OS::Heat::None
+  OS::TripleO::Services::GnocchiApi: OS::Heat::None
+  OS::TripleO::Services::GnocchiMetricd: OS::Heat::None
+  OS::TripleO::Services::GnocchiStatsd: OS::Heat::None
+  OS::TripleO::Services::AodhApi: OS::Heat::None
+  OS::TripleO::Services::AodhEvaluator: OS::Heat::None
+  OS::TripleO::Services::AodhNotifier: OS::Heat::None
+  OS::TripleO::Services::AodhListener: OS::Heat::None
+  OS::TripleO::Services::ComputeCeilometerAgent: OS::Heat::None
+
 parameter_defaults:
   # Customize all these values to match the local environment
   InternalApiNetCidr: 172.17.0.0/24
@@ -35,6 +52,29 @@ parameter_defaults:
       "bond_mode=balance-tcp lacp=active other-config:lacp-fallback-ab=true"
   NovaComputeExtraConfig:
     nova::compute::reserved_host_memory: 512
-
+  LoggingServers:
+    - host: overcloud-controller-0
+      port: 24224
+    - host: overcloud-controller-0
+      port: 24224
+  MonitoringRabbitHost: overcloud-controller-0
+  MonitoringRabbitPort: 5672
+  MonitoringRabbitUserName: sensu
+  MonitoringRabbitPassword: sensu
+  MonitoringRabbitUseSSL: false
+  MonitoringRabbitVhost: "/sensu"
+  SensuClientCustomConfig:
+    api:
+      warning: 10
+      critical: 20
   ExtraConfig:
-    snmp::accesses: ['access notConfigGroup "" any noauth exact none none none' ]
+    neutron::notification_driver: noop
+    nova::notification_driver: noop
+    keystone::notification_driver: noop
+    glance::notify::rabbitmq::notification_driver: noop
+    cinder::ceilometer::notification_driver: noop
+    manila::notification_driver: noop
+    sahara::notify::notification_driver: noop
+    barbican::api::notification_driver: noop
+    ceilometer::notification_driver: noop
+    heat::notification_driver: noop

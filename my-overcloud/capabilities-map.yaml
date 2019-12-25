@@ -128,14 +128,6 @@ topics:
   - title: Additional Services
     description: Deploy additional Overcloud services
     environment_groups:
-      - title: Manila
-        description:
-        environments:
-          - file: environments/manila-generic-config.yaml
-            title: Manila
-            description: Enable Manila generic driver backend
-            requires:
-              - overcloud-resource-registry-puppet.yaml
       - title: Sahara
         description:
         environments:
@@ -396,6 +388,13 @@ topics:
             title: Cinder Dell EMC Storage Center ISCSI backend
             description: >
               Enables a Cinder Dell EMC Storage Center ISCSI backend,
+              configured via puppet
+            requires:
+              - overcloud-resource-registry-puppet.yaml
+          - file: environments/cinder-dellemc-vmax-iscsi-config.yaml
+            title: Cinder Dell EMC VMAX ISCSI backend
+            description: >
+              Enables a Cinder Dell EMC VMAX ISCSI backend,
               configured via puppet
             requires:
               - overcloud-resource-registry-puppet.yaml

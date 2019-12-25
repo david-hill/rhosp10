@@ -42,6 +42,12 @@ if hiera -c /etc/puppet/hiera.yaml service_names | grep -q nova_compute; then
     fi
 fi
 
+# remove openstack-neutron-bgp-dragent because it causes conflicts for upgrades
+if rpm -qa | grep -q openstack-neutron-bgp-dragent; then
+    echo "Uninstalling openstack-neutron-bgp-dragent"
+    yum -q -y remove openstack-neutron-bgp-dragent
+fi
+
 command_arguments=${command_arguments:-}
 
 # Always ensure yum has full cache
@@ -74,7 +80,7 @@ touch /etc/httpd/conf.d/ssl.conf
 # Fix the redis/rabbit resource start/stop timeouts. See https://bugs.launchpad.net/tripleo/+bug/1633455
 # and https://bugs.launchpad.net/tripleo/+bug/1634851
 if [[ "$pacemaker_status" == "active" && \
-      "$(hiera -c /etc/puppet/hiera.yaml bootstrap_nodeid)" = "$(facter hostname)" ]] ; then
+      -n $(is_bootstrap_node) ]] ; then
     if pcs resource show rabbitmq | grep -E "start.*timeout=100"; then
         pcs resource update rabbitmq op start timeout=200s
     fi
@@ -99,7 +105,25 @@ if [[ "$pacemaker_status" == "active" ]] ; then
         echo "Active node count is 1, stopping node with --force"
         pcs cluster stop --force
     else
-        pcs cluster stop
+        CLUSTER_NODE=$(crm_node -n)
+        # Retrieve all the VIPs which are currently hosted on the cluster node we're running on
+        VIPS_TO_MOVE=$(crm_mon --as-xml | xmllint --xpath '//resource[@resource_agent = "ocf::heartbeat:IPaddr2" and @role = "Started" and @managed = "true" and ./node[@name = "'${CLUSTER_NODE}'"]]/@id' - | sed -e 's/id=//g' -e 's/"//g')
+        for v in ${VIPS_TO_MOVE}; do
+            echo "Moving VIP $v on another node"
+            pcs resource move $v --wait=300
+        done
+
+        # Clear the internal location bans that were created by pcs to move the VIPs
+        for v in ${VIPS_TO_MOVE}; do
+            echo "Clearing up move ban for VIP $v"
+            ban_id=$(cibadmin --query | xmllint --xpath 'string(//rsc_location[@rsc="'${v}'" and @node="'${CLUSTER_NODE}'" and @score="-INFINITY"]/@id)' -)
+            if [ -n "$ban_id" ]; then
+                pcs constraint remove ${ban_id}
+            else
+                echo "Could not bind location ban constraint for VIP $v" 2>&1
+            fi
+        done
+        pcs cluster stop --wait=300
     fi
     update_network
 else
@@ -125,7 +149,7 @@ echo "yum return code: $return_code"
 
 if [[ "$pacemaker_status" == "active" ]] ; then
     echo "Starting cluster node"
-    pcs cluster start
+    pcs cluster start --wait=300
 
     hostname=$(hostname -s)
     tstart=$(date +%s)
@@ -163,7 +187,7 @@ fi
 # a performance impairment. So, as a stop-gap-solution we run it here on the
 # first controller node, which is a noop if there is nothing to do.
 if hiera -c /etc/puppet/hiera.yaml service_names | grep -q nova_api && \
-  [[ "$(hiera -c /etc/puppet/hiera.yaml bootstrap_nodeid)" = "$(facter hostname)" ]] ; then
+  [[ -n $(is_bootstrap_node) ]] ; then
     /usr/bin/nova-manage db online_data_migrations
 fi
 
