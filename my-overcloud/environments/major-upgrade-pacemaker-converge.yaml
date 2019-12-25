@@ -1,0 +1,8 @@
+parameter_defaults:
+  UpgradeLevelNovaCompute: ''
+  EnableConfigPurge: false
+  NeutronAllowL3AgentFailover: True
+
+resource_registry:
+  OS::TripleO::Services::SaharaApi: ../puppet/services/sahara-api.yaml
+  OS::TripleO::Services::SaharaEngine: ../puppet/services/sahara-engine.yaml

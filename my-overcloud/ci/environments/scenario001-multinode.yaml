@@ -1,0 +1,110 @@
+resource_registry:
+  OS::TripleO::Controller::Net::SoftwareConfig: ../common/net-config-multinode.yaml
+  OS::TripleO::Compute::Net::SoftwareConfig: ../common/net-config-multinode.yaml
+  OS::TripleO::Services::CephMon: ../../puppet/services/ceph-mon.yaml
+  OS::TripleO::Services::CephOSD: ../../puppet/services/ceph-osd.yaml
+  OS::TripleO::Services::CephClient: ../../puppet/services/ceph-client.yaml
+  OS::TripleO::Services::RabbitMQ: ../../puppet/services/pacemaker/rabbitmq.yaml
+  OS::TripleO::Services::HAproxy: ../../puppet/services/pacemaker/haproxy.yaml
+  OS::TripleO::Services::Pacemaker: ../../puppet/services/pacemaker.yaml
+  OS::TripleO::Services::Redis: ../../puppet/services/pacemaker/database/redis.yaml
+  OS::TripleO::Services::MySQL: ../../puppet/services/pacemaker/database/mysql.yaml
+  OS::TripleO::Services::CinderVolume: ../../puppet/services/pacemaker/cinder-volume.yaml
+  OS::TripleO::Services::Keepalived: OS::Heat::None
+  OS::TripleO::Tasks::ControllerPrePuppet: ../../extraconfig/tasks/pre_puppet_pacemaker.yaml
+  OS::TripleO::Tasks::ControllerPostPuppet: ../../extraconfig/tasks/post_puppet_pacemaker.yaml
+  OS::TripleO::Tasks::ControllerPostPuppetRestart: ../../extraconfig/tasks/post_puppet_pacemaker_restart.yaml
+  # Some infra instances don't pass the ping test but are otherwise working.
+  # Since the OVB jobs also test this functionality we can shut it off here.
+  OS::TripleO::AllNodes::Validation: ../common/all-nodes-validation-disabled.yaml
+
+parameter_defaults:
+  ControllerServices:
+    - OS::TripleO::Services::Kernel
+    - OS::TripleO::Services::Keystone
+    - OS::TripleO::Services::GlanceApi
+    - OS::TripleO::Services::GlanceRegistry
+    - OS::TripleO::Services::HeatApi
+    - OS::TripleO::Services::HeatApiCfn
+    - OS::TripleO::Services::HeatApiCloudwatch
+    - OS::TripleO::Services::HeatEngine
+    - OS::TripleO::Services::MySQL
+    - OS::TripleO::Services::NeutronDhcpAgent
+    - OS::TripleO::Services::NeutronL3Agent
+    - OS::TripleO::Services::NeutronMetadataAgent
+    - OS::TripleO::Services::NeutronServer
+    - OS::TripleO::Services::NeutronCorePlugin
+    - OS::TripleO::Services::NeutronOvsAgent
+    - OS::TripleO::Services::RabbitMQ
+    - OS::TripleO::Services::HAproxy
+    - OS::TripleO::Services::Keepalived
+    - OS::TripleO::Services::Memcached
+    - OS::TripleO::Services::Pacemaker
+    - OS::TripleO::Services::NovaConductor
+    - OS::TripleO::Services::NovaApi
+    - OS::TripleO::Services::NovaMetadata
+    - OS::TripleO::Services::NovaScheduler
+    - OS::TripleO::Services::Ntp
+    - OS::TripleO::Services::Snmp
+    - OS::TripleO::Services::Sshd
+    - OS::TripleO::Services::Timezone
+    - OS::TripleO::Services::NovaCompute
+    - OS::TripleO::Services::NovaLibvirt
+    - OS::TripleO::Services::MongoDb
+    - OS::TripleO::Services::Redis
+    - OS::TripleO::Services::AodhApi
+    - OS::TripleO::Services::AodhEvaluator
+    - OS::TripleO::Services::AodhNotifier
+    - OS::TripleO::Services::AodhListener
+    - OS::TripleO::Services::CeilometerApi
+    - OS::TripleO::Services::CeilometerCollector
+    - OS::TripleO::Services::CeilometerExpirer
+    - OS::TripleO::Services::CeilometerAgentCentral
+    - OS::TripleO::Services::CeilometerAgentNotification
+    - OS::TripleO::Services::GnocchiApi
+    - OS::TripleO::Services::GnocchiMetricd
+    - OS::TripleO::Services::GnocchiStatsd
+    - OS::TripleO::Services::CephMon
+    - OS::TripleO::Services::CephOSD
+    - OS::TripleO::Services::CephClient
+    - OS::TripleO::Services::CinderApi
+    - OS::TripleO::Services::CinderScheduler
+    - OS::TripleO::Services::CinderVolume
+    - OS::TripleO::Services::TripleoPackages
+    - OS::TripleO::Services::TripleoFirewall
+  ControllerExtraConfig:
+    nova::compute::libvirt::services::libvirt_virt_type: qemu
+    nova::compute::libvirt::libvirt_virt_type: qemu
+  Debug: true
+  # we don't deploy Swift so we switch to file backend.
+  GnocchiBackend: 'file'
+  #NOTE(gfidente): not great but we need this to deploy on ext4
+  #http://docs.ceph.com/docs/jewel/rados/configuration/filesystem-recommendations/
+  ExtraConfig:
+    ceph::profile::params::osd_max_object_name_len: 256
+    ceph::profile::params::osd_max_object_namespace_len: 64
+    #NOTE(gfidente): necessary when deploying a single OSD
+    ceph::profile::params::osd_pool_default_pg_num: 32
+    ceph::profile::params::osd_pool_default_pgp_num: 32
+  #NOTE: These ID's and keys should be regenerated for
+  # a production deployment. What is here is suitable for
+  # developer and CI testing only.
+  CephClusterFSID: '4b5c8c0a-ff60-454b-a1b4-9747aa737d19'
+  CephMonKey: 'AQC+Ox1VmEr3BxAALZejqeHj50Nj6wJDvs96OQ=='
+  CephAdminKey: 'AQDLOh1VgEp6FRAAFzT7Zw+Y9V6JJExQAsRnRQ=='
+  CephClientKey: 'AQC+vYNXgDAgAhAAc8UoYt+OTz5uhV7ItLdwUw=='
+  CephPoolDefaultSize: 1
+  NovaEnableRbdBackend: true
+  GlanceBackend: rbd
+  CinderEnableRbdBackend: true
+  CinderBackupBackend: ceph
+  CinderEnableIscsiBackend: false
+  BannerText: |
+    ******************************************************************
+    * This system is for the use of authorized users only. Usage of  *
+    * this system may be monitored and recorded by system personnel. *
+    * Anyone using this system expressly consents to such monitoring *
+    * and is advised that if such monitoring reveals possible        *
+    * evidence of criminal activity, system personnel may provide    *
+    * the evidence from such monitoring to law enforcement officials.*
+    ******************************************************************
