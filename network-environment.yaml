@@ -8,21 +8,6 @@ resource_registry:
   OS::TripleO::Services::FluentdClient: /home/stack/rhosp10/my-overcloud/puppet/services/logging/fluentd-client.yaml
   OS::TripleO::Services::SensuClient: /home/stack/rhosp10/my-overcloud/puppet/services/monitoring/sensu-client.yaml
 
-  OS::TripleO::Services::MongoDb: OS::Heat::None
-  OS::TripleO::Services::CeilometerApi: OS::Heat::None
-  OS::TripleO::Services::CeilometerCollector: OS::Heat::None
-  OS::TripleO::Services::CeilometerExpirer: OS::Heat::None
-  OS::TripleO::Services::CeilometerAgentCentral: OS::Heat::None
-  OS::TripleO::Services::CeilometerAgentNotification: OS::Heat::None
-  OS::TripleO::Services::GnocchiApi: OS::Heat::None
-  OS::TripleO::Services::GnocchiMetricd: OS::Heat::None
-  OS::TripleO::Services::GnocchiStatsd: OS::Heat::None
-  OS::TripleO::Services::AodhApi: OS::Heat::None
-  OS::TripleO::Services::AodhEvaluator: OS::Heat::None
-  OS::TripleO::Services::AodhNotifier: OS::Heat::None
-  OS::TripleO::Services::AodhListener: OS::Heat::None
-  OS::TripleO::Services::ComputeCeilometerAgent: OS::Heat::None
-
 parameter_defaults:
   # Customize all these values to match the local environment
   InternalApiNetCidr: 172.17.0.0/24
@@ -67,14 +52,42 @@ parameter_defaults:
     api:
       warning: 10
       critical: 20
-  ExtraConfig:
-    neutron::notification_driver: noop
-    nova::notification_driver: noop
-    keystone::notification_driver: noop
-    glance::notify::rabbitmq::notification_driver: noop
-    cinder::ceilometer::notification_driver: noop
-    manila::notification_driver: noop
-    sahara::notify::notification_driver: noop
-    barbican::api::notification_driver: noop
-    ceilometer::notification_driver: noop
-    heat::notification_driver: noop
+  ExtraSysctlSettings:
+    net.nf_conntrack_max:
+      value: 800000
+    net.netfilter.nf_conntrack_max:
+      value: 800000
+  ControllerExtraConfig:
+    nova::api::osapi_compute_workers: 24
+    nova::api::metadata_workers: 24
+    nova::api::ec2_workers: 24
+    nova::api::conductor_workers: 24
+    nova::wsgi::apache::workers: 24
+    nova::conductor::workers: 24
+    cinder::api::service_workers: 24
+    glance::api::workers: 24
+    glance::registry::workers: 24
+    heat::engine::num_engine_workers: 24
+    heat::api::workers: 24
+    heat::api_cloudwatch::workers: 24
+    heat::api_cfn::workers: 24
+    keystone::admin_workers: 24
+    keystone::public_workers: 24
+    keystone::wsgi::apache::workers: 24
+    neutron::server::api_workers: 24
+    neutron::server::rpc_workers: 24
+    neutron::agents::metadata::metadata_workers: 24
+    swift::proxy::workers: 24
+    swift::storage::server::workers: 24
+  NeutronWorkers: 24
+  SwiftWorkers: 24 
+  ApacheMaxRequestWorkers: 24
+  KeystoneWorkers: 24
+  CeilometerWorkers: 24
+  NovaWorkers: 24
+  NeutronWorkers: 24
+  NovaWorkers: 24
+  GlanceWorkers: 24
+  GnocchiMetricdWorkers: 24
+  HeatWorkers: 24
+  SaharaWorkers: 24
