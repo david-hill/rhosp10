@@ -48,6 +48,11 @@ parameters:
     type: string
     default: ''
     description: Set to True to enable debugging on all services.
+  GnocchiFileBasePath:
+    default: '/var/lib/gnocchi'
+    description: Path to use when file driver is used. This could be NFS or a
+      flat file.
+    type: string
 
 outputs:
   aux_parameters:
@@ -75,6 +80,7 @@ outputs:
               - "%{hiera('tripleo::profile::base::database::mysql::client_bind_address')}"
         gnocchi::db::sync::extra_opts: '--skip-storage --create-legacy-resource-types'
         gnocchi::storage::metric_processing_delay: {get_param: MetricProcessingDelay}
+        gnocchi::storage::file::file_basepath: {get_param: GnocchiFileBasePath}
         gnocchi::storage::swift::swift_user: 'service:gnocchi'
         gnocchi::storage::swift::swift_auth_version: 2
         gnocchi::storage::swift::swift_key: {get_param: GnocchiPassword}

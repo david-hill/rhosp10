@@ -20,7 +20,11 @@ crudini  --set /etc/nova/nova.conf upgrade_levels compute $upgrade_level_nova_co
 
 # Special-case OVS for https://bugs.launchpad.net/tripleo/+bug/1669714
 $(declare -f update_os_net_config)
+$(declare -f change_ovs_2_9_user)
+$(declare -f change_ovs_2_9_perms)
+$(declare -f change_ovs_runtime_mode)
 $(declare -f special_case_ovs_upgrade_if_needed)
+$(declare -f special_case_iptables_services_upgrade_if_needed)
 $(declare -f update_network)
 update_network
 
@@ -31,6 +35,10 @@ yum -y update
 # Due to bug#1640177 we need to restart compute agent
 echo "Restarting openstack ceilometer agent compute"
 systemctl restart openstack-ceilometer-compute
+
+# Due to bug#1625166 we need to restart nova compute.
+echo "Restarting openstack nova compute"
+systemctl restart openstack-nova-compute
 
 ENDOFCAT
 
