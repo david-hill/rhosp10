@@ -4,7 +4,7 @@ resource_registry:
   OS::TripleO::Controller::Net::SoftwareConfig: /home/stack/rhosp10/my-overcloud/network/config/single-nic-vlans/controller.yaml
 #  OS::TripleO::ObjectStorage::Net::SoftwareConfig: /home/stack/rhosp10/my-overcloud/network/config/single-nic-vlans/swift-storage.yaml
   OS::TripleO::CephStorage::Net::SoftwareConfig: /home/stack/rhosp10/my-overcloud/network/config/single-nic-vlans/ceph-storage.yaml
-  OS::TripleO::NodeUserData: /home/stack/rhosp10/my-overcloud/swap.yaml
+  OS::TripleO::NodeUserData: /home/stack/rhosp10/my-overcloud/first-boot.yaml
   OS::TripleO::NodeExtraConfigPost: /home/stack/rhosp10/custom_puppet_config.yaml
 parameter_defaults:
   # Customize all these values to match the local environment
@@ -35,3 +35,6 @@ parameter_defaults:
       "bond_mode=balance-tcp lacp=active other-config:lacp-fallback-ab=true"
   NovaComputeExtraConfig:
     nova::compute::reserved_host_memory: 512
+
+  ExtraConfig:
+    snmp::accesses: ['access notConfigGroup "" any noauth exact none none none' ]

@@ -1,0 +1,40 @@
+heat_template_version: 2014-10-16
+description: >
+  This is an example showing how you can do firstboot configuration
+  of the nodes via cloud-init.  To enable this, replace the default
+  mapping of OS::TripleO::NodeUserData in ../overcloud_resource_registry*
+
+parameters:
+
+resources:
+  userdata:
+    type: OS::Heat::MultipartMime
+    properties:
+      parts:
+      - config: {get_resource: snmpd_local}
+      - config: {get_resource: swapon_config}
+
+  swapon_config:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      config: |
+        #!/bin/bash
+        swap_device=$(sudo fdisk -l | grep swap | awk '{print $1}')
+        if [[ $swap_device && ${swap_device} ]]; then
+             rc_local="/etc/rc.d/rc.local"
+             echo "swapon $swap_device " >> $rc_local
+             chmod 755 $rc_local
+             swapon $swap_device
+        fi
+
+  snmpd_local:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      config: |
+        #!/bin/bash
+        echo "createUser user2 MD5 user2password" >> /etc/snmp/snmpd.local.conf
+        echo "rouser user2 auth 1.3.6.1.2.1" >> /etc/snmp/snmpd.local.conf
+
+outputs:
+  OS::stack_id:
+    value: {get_resource: userdata}
